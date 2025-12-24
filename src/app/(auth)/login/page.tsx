@@ -6,18 +6,26 @@ import { useRouter } from "next/navigation"
 import { User, Lock, AlertCircle, CheckCircle2, Loader2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+const REMEMBER_KEY = "attendance_remembered_employee"
+
 export default function LoginPage() {
   const router = useRouter()
   const [employeeId, setEmployeeId] = useState("")
   const [password, setPassword] = useState("")
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [mounted, setMounted] = useState(false)
 
-  // Trigger mount animation
+  // Load remembered employee ID and trigger mount animation
   useEffect(() => {
     setMounted(true)
+    const remembered = localStorage.getItem(REMEMBER_KEY)
+    if (remembered) {
+      setEmployeeId(remembered)
+      setRememberMe(true)
+    }
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -36,6 +44,13 @@ export default function LoginPage() {
         setError("員工編號或密碼錯誤")
         setIsLoading(false)
       } else {
+        // Save or remove remembered employee ID
+        if (rememberMe) {
+          localStorage.setItem(REMEMBER_KEY, employeeId)
+        } else {
+          localStorage.removeItem(REMEMBER_KEY)
+        }
+
         setIsSuccess(true)
         // Wait for success animation before redirect
         setTimeout(() => {
@@ -202,6 +217,39 @@ export default function LoginPage() {
               />
             </div>
 
+            {/* Remember me switch */}
+            <div
+              className={cn(
+                "flex items-center justify-between",
+                "transition-all duration-500 delay-[450ms]",
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+              )}
+            >
+              <span className="text-sm text-gray-600">記住帳號</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rememberMe}
+                onClick={() => setRememberMe(!rememberMe)}
+                disabled={isLoading || isSuccess}
+                className={cn(
+                  "relative inline-flex h-7 w-12 items-center rounded-full",
+                  "transition-colors duration-300 ease-in-out",
+                  "focus:outline-none focus:ring-4 focus:ring-primary/10",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                  rememberMe ? "bg-primary" : "bg-gray-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 rounded-full bg-white shadow-md",
+                    "transform transition-transform duration-300 ease-in-out",
+                    rememberMe ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
+            </div>
+
             {/* Submit button */}
             <div
               className={cn(
@@ -249,12 +297,6 @@ export default function LoginPage() {
             </div>
           </form>
 
-          {/* Footer */}
-          <div className="px-8 py-4 bg-gray-50 border-t border-gray-100">
-            <p className="text-center text-xs text-gray-400">
-              首次登入請使用預設密碼，登入後請立即更改
-            </p>
-          </div>
         </div>
 
         {/* Bottom decoration */}
@@ -265,7 +307,7 @@ export default function LoginPage() {
             mounted ? "opacity-100" : "opacity-0"
           )}
         >
-          <p>© 2024 考勤打卡系統</p>
+          <p>© 2026 Created by Leo</p>
         </div>
       </div>
     </div>
