@@ -339,7 +339,7 @@ export function DashboardNav({ user }: NavProps) {
                 )}
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
+                onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
                 className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
                 <LogOut className="w-4 h-4" />
@@ -419,7 +419,7 @@ export function DashboardNav({ user }: NavProps) {
             <button
               onClick={() => {
                 setIsOpen(false)
-                signOut({ callbackUrl: "/login" })
+                signOut({ callbackUrl: `${window.location.origin}/login` })
               }}
               className={cn(
                 "w-full flex items-center justify-center gap-2",
