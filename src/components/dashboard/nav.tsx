@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import type { Role } from "@prisma/client"
-import { Menu, X, LogOut, Clock, Calendar, FileText, Users, Store, BarChart3, CheckSquare, DollarSign, ClipboardList } from "lucide-react"
+import { Menu, X, LogOut, Clock, Calendar, FileText, Users, Store, BarChart3, CheckSquare, DollarSign, ClipboardList, History } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface NavProps {
@@ -19,6 +19,7 @@ interface NavProps {
 const navItems = [
   { href: "/dashboard", label: "打卡", icon: Clock, roles: ["EMPLOYEE", "SHIFT_LEADER", "STORE_MANAGER", "SUPER_ADMIN"] },
   { href: "/schedule", label: "我的排班", icon: Calendar, roles: ["EMPLOYEE", "SHIFT_LEADER", "STORE_MANAGER", "SUPER_ADMIN"] },
+  { href: "/attendance", label: "出勤記錄", icon: History, roles: ["EMPLOYEE", "SHIFT_LEADER", "STORE_MANAGER", "SUPER_ADMIN"] },
   { href: "/leave", label: "請假", icon: FileText, roles: ["EMPLOYEE", "SHIFT_LEADER", "STORE_MANAGER", "SUPER_ADMIN"] },
   { href: "/sales", label: "業績回報", icon: DollarSign, roles: ["EMPLOYEE", "SHIFT_LEADER", "STORE_MANAGER", "SUPER_ADMIN"] },
   { href: "/manager/scheduling", label: "排班管理", icon: ClipboardList, roles: ["STORE_MANAGER", "SUPER_ADMIN"] },

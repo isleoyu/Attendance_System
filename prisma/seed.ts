@@ -295,6 +295,115 @@ async function main() {
 
   console.log("Created sample schedules")
 
+  // ===== Create December attendance records for ADMIN001 =====
+  console.log("\nCreating December attendance records for ADMIN001...")
+
+  // Create shift type for store1 if admin needs it
+  const fullDayShift = await prisma.shiftType.upsert({
+    where: { storeId_code: { storeId: store1.id, code: "FULL" } },
+    update: {},
+    create: {
+      name: "全日班",
+      code: "FULL",
+      startTime: "09:00",
+      endTime: "18:00",
+      breakDuration: 60,
+      maxBreakCount: 3,
+      storeId: store1.id,
+    },
+  })
+
+  // December 2024 attendance data for ADMIN001
+  const december2024 = [
+    { day: 2, clockIn: "08:55", clockOut: "18:05", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 3, clockIn: "09:02", clockOut: "18:15", breakMins: 45, status: "CLOCKED_OUT" as const },
+    { day: 4, clockIn: "08:50", clockOut: "19:30", breakMins: 60, overtimeMins: 90, status: "CLOCKED_OUT" as const },
+    { day: 5, clockIn: "09:00", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 6, clockIn: "09:10", clockOut: "18:20", breakMins: 50, status: "CLOCKED_OUT" as const },
+    // Weekend off: 7, 8
+    { day: 9, clockIn: "08:45", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 10, clockIn: "09:00", clockOut: "20:00", breakMins: 60, overtimeMins: 120, status: "CLOCKED_OUT" as const },
+    { day: 11, clockIn: "09:05", clockOut: "18:10", breakMins: 55, status: "CLOCKED_OUT" as const },
+    { day: 12, clockIn: "08:58", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 13, clockIn: "09:00", clockOut: "18:30", breakMins: 60, status: "CLOCKED_OUT" as const },
+    // Weekend off: 14, 15
+    { day: 16, clockIn: "09:00", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 17, clockIn: "08:50", clockOut: "19:00", breakMins: 45, overtimeMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 18, clockIn: "09:15", clockOut: "18:20", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 19, clockIn: "09:00", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+    { day: 20, clockIn: "08:55", clockOut: "18:45", breakMins: 50, status: "CLOCKED_OUT" as const },
+    // Weekend off: 21, 22
+    { day: 23, clockIn: "09:00", clockOut: "18:00", breakMins: 60, status: "CLOCKED_OUT" as const },
+  ]
+
+  for (const record of december2024) {
+    const dateObj = new Date(2024, 11, record.day) // Month is 0-indexed, so 11 = December
+    dateObj.setHours(0, 0, 0, 0)
+
+    // Create schedule first
+    const schedule = await prisma.schedule.upsert({
+      where: { userId_date: { userId: admin.id, date: dateObj } },
+      update: {},
+      create: {
+        userId: admin.id,
+        date: dateObj,
+        shiftTypeId: fullDayShift.id,
+        storeId: store1.id,
+        status: "COMPLETED",
+        publishedAt: new Date(2024, 10, 25), // Published in November
+      },
+    })
+
+    // Parse clock times
+    const [inHour, inMin] = record.clockIn.split(":").map(Number)
+    const [outHour, outMin] = record.clockOut.split(":").map(Number)
+
+    const clockInTime = new Date(2024, 11, record.day, inHour, inMin, 0)
+    const clockOutTime = new Date(2024, 11, record.day, outHour, outMin, 0)
+
+    // Calculate total minutes
+    const totalMinutes = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / 60000)
+    const netWorkMinutes = totalMinutes - record.breakMins
+
+    // Create attendance record
+    const attendance = await prisma.attendance.upsert({
+      where: { userId_date: { userId: admin.id, date: dateObj } },
+      update: {},
+      create: {
+        userId: admin.id,
+        storeId: store1.id,
+        date: dateObj,
+        clockIn: clockInTime,
+        clockOut: clockOutTime,
+        status: record.status,
+        totalMinutes,
+        breakMinutes: record.breakMins,
+        netWorkMinutes,
+        overtimeMinutes: record.overtimeMins || 0,
+        scheduleId: schedule.id,
+      },
+    })
+
+    // Add break records for each attendance
+    const breakStartHour = 12
+    const breakDurationMins = record.breakMins
+
+    await prisma.break.upsert({
+      where: { id: `break-admin-dec-${record.day}` },
+      update: {},
+      create: {
+        id: `break-admin-dec-${record.day}`,
+        attendanceId: attendance.id,
+        startTime: new Date(2024, 11, record.day, breakStartHour, 0, 0),
+        endTime: new Date(2024, 11, record.day, breakStartHour, breakDurationMins, 0),
+        type: "MEAL",
+        durationMinutes: breakDurationMins,
+      },
+    })
+  }
+
+  console.log(`Created ${december2024.length} attendance records for ADMIN001 in December 2024`)
+
   console.log("\n=== Seed Complete ===")
   console.log("\nTest Accounts:")
   console.log("┌────────────┬────────────────┬─────────────┐")
