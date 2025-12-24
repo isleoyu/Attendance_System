@@ -339,7 +339,10 @@ export function DashboardNav({ user }: NavProps) {
                 )}
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
+                onClick={async () => {
+                  await signOut({ redirect: false })
+                  window.location.href = "/login"
+                }}
                 className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
                 <LogOut className="w-4 h-4" />
@@ -417,9 +420,10 @@ export function DashboardNav({ user }: NavProps) {
           {/* Logout button */}
           <div className="border-t p-4">
             <button
-              onClick={() => {
+              onClick={async () => {
                 setIsOpen(false)
-                signOut({ callbackUrl: `${window.location.origin}/login` })
+                await signOut({ redirect: false })
+                window.location.href = "/login"
               }}
               className={cn(
                 "w-full flex items-center justify-center gap-2",
