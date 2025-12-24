@@ -1,0 +1,462 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== User & Authentication =====
+
+model User {
+  id             String         @id @default(cuid())
+  email          String         @unique
+  passwordHash   String
+  name           String
+  phone          String?
+  employeeId     String         @unique
+  role           Role           @default(EMPLOYEE)
+  status         UserStatus     @default(ACTIVE)
+  employmentType EmploymentType @default(PART_TIME)
+  hourlyRate     Decimal?       @db.Decimal(10, 2) // 時薪 (兼職)
+  monthlySalary  Decimal?       @db.Decimal(10, 2) // 月薪 (正職)
+
+  // Relations
+  stores          UserStore[]
+  attendances     Attendance[]
+  schedules       Schedule[]
+  leaveRequests   LeaveRequest[]
+  approvals       Approval[]       @relation("ApproverRelation")
+  payrollRecords  PayrollRecord[]
+  salesReports    DailySalesReport[] @relation("SalesReportSubmitter")
+  salesEntries    DailySalesReportEntry[] @relation("SalesEntryCreator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+}
+
+enum Role {
+  SUPER_ADMIN
+  STORE_MANAGER
+  SHIFT_LEADER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum EmploymentType {
+  FULL_TIME  // 正職 - 月薪制
+  PART_TIME  // 兼職 - 時薪制
+}
+
+// ===== Store/Location =====
+
+model Store {
+  id       String  @id @default(cuid())
+  name     String
+  code     String  @unique
+  address  String?
+  timezone String  @default("Asia/Taipei")
+  settings Json?
+
+  users        UserStore[]
+  schedules    Schedule[]
+  shiftTypes   ShiftType[]
+  attendances  Attendance[]
+  salesReports DailySalesReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===== User-Store Many-to-Many (Multi-store support) =====
+
+model UserStore {
+  id         String  @id @default(cuid())
+  userId     String
+  storeId    String
+  isPrimary  Boolean @default(false)
+  canClockIn Boolean @default(true)
+  storeRole  Role    @default(EMPLOYEE)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, storeId])
+  @@index([userId])
+  @@index([storeId])
+}
+
+// ===== Shift Types =====
+
+model ShiftType {
+  id   String @id @default(cuid())
+  name String
+  code String
+
+  startTime String
+  endTime   String
+
+  breakDuration Int @default(30)
+  maxBreakCount Int @default(3)
+
+  isSplit         Boolean @default(false)
+  splitBreakStart String?
+  splitBreakEnd   String?
+
+  storeId   String
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, code])
+  @@index([storeId])
+}
+
+// ===== Attendance Records =====
+
+model Attendance {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Which store the employee clocked in at
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id])
+
+  date DateTime @db.Date
+
+  clockIn  DateTime?
+  clockOut DateTime?
+
+  status AttendanceStatus @default(CLOCKED_IN)
+
+  totalMinutes    Int?
+  breakMinutes    Int?
+  netWorkMinutes  Int?
+  overtimeMinutes Int?
+
+  // For split shifts
+  clockIn2  DateTime?
+  clockOut2 DateTime?
+
+  breaks     Break[]
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id])
+  approvalId String?   @unique
+  approval   Approval? @relation(fields: [approvalId], references: [id])
+
+  notes      String?
+  deviceInfo String?
+  ipAddress  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@index([storeId, date])
+  @@index([status])
+}
+
+enum AttendanceStatus {
+  CLOCKED_IN
+  ON_BREAK
+  CLOCKED_OUT
+  ABSENT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+// ===== Break Records =====
+
+model Break {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  startTime DateTime
+  endTime   DateTime?
+
+  type BreakType @default(REST)
+
+  durationMinutes Int?
+  notes           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([attendanceId])
+}
+
+enum BreakType {
+  REST
+  MEAL
+  PERSONAL
+  EMERGENCY
+}
+
+// ===== Scheduling =====
+
+model Schedule {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date DateTime @db.Date
+
+  shiftTypeId String
+  shiftType   ShiftType @relation(fields: [shiftTypeId], references: [id])
+
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id])
+
+  customStart String?
+  customEnd   String?
+
+  status ScheduleStatus @default(SCHEDULED)
+
+  attendance Attendance[]
+
+  notes       String?
+  publishedAt DateTime?
+  publishedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([storeId, date])
+}
+
+enum ScheduleStatus {
+  DRAFT
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// ===== Leave Requests =====
+
+model LeaveRequest {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      LeaveType
+  startDate DateTime       @db.Date
+  endDate   DateTime       @db.Date
+  reason    String?
+  status    ApprovalStatus @default(PENDING)
+
+  approvalId String?   @unique
+  approval   Approval? @relation(fields: [approvalId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  PERSONAL
+  UNPAID
+  COMPENSATORY
+}
+
+// ===== Approval Workflow =====
+
+model Approval {
+  id   String       @id @default(cuid())
+  type ApprovalType
+
+  status ApprovalStatus @default(PENDING)
+
+  approverId String?
+  approver   User?   @relation("ApproverRelation", fields: [approverId], references: [id])
+
+  approvedAt DateTime?
+  comments   String?
+
+  attendance   Attendance?
+  leaveRequest LeaveRequest?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([approverId])
+}
+
+enum ApprovalType {
+  ATTENDANCE_ADJUSTMENT
+  OVERTIME
+  LEAVE_REQUEST
+  SCHEDULE_CHANGE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ===== Payroll =====
+
+model PayrollRecord {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+
+  regularHours  Decimal @db.Decimal(10, 2)
+  overtimeHours Decimal @db.Decimal(10, 2)
+  holidayHours  Decimal @db.Decimal(10, 2)
+
+  regularRate  Decimal @db.Decimal(10, 2)
+  overtimeRate Decimal @db.Decimal(10, 2)
+  holidayRate  Decimal @db.Decimal(10, 2)
+
+  grossPay   Decimal @db.Decimal(12, 2)
+  deductions Decimal @db.Decimal(12, 2)
+  netPay     Decimal @db.Decimal(12, 2)
+
+  details Json?
+
+  status PayrollStatus @default(DRAFT)
+
+  generatedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  paidAt      DateTime?
+
+  @@unique([userId, periodStart, periodEnd])
+  @@index([periodStart, periodEnd])
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PAID
+  DISPUTED
+}
+
+// ===== Audit Log =====
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ===== Daily Sales Report (每日業績回報) =====
+
+model DailySalesReport {
+  id      String   @id @default(cuid())
+  storeId String
+  date    DateTime @db.Date
+
+  // 員工填寫欄位
+  dailySales      Decimal  @db.Decimal(12, 2) // 當日營業額
+  cashIncome      Decimal  @db.Decimal(12, 2) // 現金收入
+  linePayIncome   Decimal  @db.Decimal(12, 2) // LinePay 收入
+  uberIncome      Decimal  @db.Decimal(12, 2) // Uber 收入
+  foodPandaIncome Decimal  @db.Decimal(12, 2) // FoodPanda 收入
+  expenses        Decimal  @db.Decimal(12, 2) // 支出費用
+  cashDifference  Decimal  @db.Decimal(12, 2) // 短溢金額 (正數=溢收, 負數=短少)
+  dailyCash       Decimal  @db.Decimal(12, 2) // 當日現金
+  depositedCash   Decimal  @db.Decimal(12, 2) // 存入現金
+  undepositedCash Decimal  @db.Decimal(12, 2) // 未存現金
+
+  // 系統計算欄位
+  cumulativeSales Decimal  @db.Decimal(12, 2) // 累計營業額
+  totalLaborHours Decimal  @db.Decimal(10, 2) // 總人力時
+  productivity    Decimal  @db.Decimal(10, 2) // 生產力 (當日營業額/總人力時)
+
+  // 結帳人/填寫人
+  submitterId String
+  submitter   User   @relation("SalesReportSubmitter", fields: [submitterId], references: [id])
+
+  // 備註
+  notes String?
+
+  // 關聯
+  store   Store                  @relation(fields: [storeId], references: [id])
+  entries DailySalesReportEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, date])
+  @@index([storeId])
+  @@index([date])
+  @@index([submitterId])
+}
+
+// 流水帳記錄 (每筆交易/異動紀錄)
+model DailySalesReportEntry {
+  id       String @id @default(cuid())
+  reportId String
+
+  entryType   SalesEntryType // 記錄類型
+  amount      Decimal        @db.Decimal(12, 2)
+  description String?
+  reference   String? // 參考編號 (如收據號碼)
+
+  // 記錄人
+  createdById String
+  createdBy   User   @relation("SalesEntryCreator", fields: [createdById], references: [id])
+
+  report DailySalesReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+enum SalesEntryType {
+  CASH_INCOME      // 現金收入
+  LINEPAY_INCOME   // LinePay
+  UBER_INCOME      // Uber
+  FOODPANDA_INCOME // FoodPanda
+  EXPENSE          // 支出
+  DEPOSIT          // 存款
+  ADJUSTMENT       // 調整
+  OTHER            // 其他
+}
